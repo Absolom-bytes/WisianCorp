@@ -1,6 +1,5 @@
-
 import { GoogleGenAI } from '@google/genai';
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { TOOLS_CONFIG, TOOL_CATEGORIES, ToolConfig } from './constants';
 import { ThinkingIcon } from './components/Icons';
@@ -17,7 +16,6 @@ interface SavedResource {
 
 declare global {
   interface Window {
-    // Fixed: Using 'any' to avoid conflict with existing 'AIStudio' type definition in the environment
     aistudio?: any;
   }
 }
@@ -48,13 +46,19 @@ function App() {
     }
     
     const checkAuth = async () => {
-        if (window.aistudio) {
-            const hasKey = await window.aistudio.hasSelectedApiKey();
-            setHasAccess(hasKey);
-            setApiStatus(hasKey ? 'online' : 'idle');
+        if (typeof window !== 'undefined' && window.aistudio) {
+            try {
+              const hasKey = await window.aistudio.hasSelectedApiKey();
+              setHasAccess(hasKey);
+              setApiStatus(hasKey ? 'online' : 'idle');
+            } catch (e) {
+              console.warn("AI Studio check failed", e);
+            }
         } else {
-            // Fallback for environment injected key
-            const hasKey = !!process.env.API_KEY;
+            // Safely check process.env to avoid "process is not defined" crash
+            // The logic (!!val) ensures we convert undefined to false
+            const envKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+            const hasKey = !!envKey;
             setHasAccess(hasKey);
             setApiStatus(hasKey ? 'online' : 'error');
         }
@@ -62,13 +66,12 @@ function App() {
     checkAuth();
   }, []);
 
-  // Update selected tool when category changes
+  // Update selectedTool when activeCategory changes to prevent mismatch
   useEffect(() => {
     const firstOfCat = TOOLS_CONFIG.find(t => t.categoryId === activeCategory);
     if (firstOfCat) setSelectedTool(firstOfCat);
   }, [activeCategory]);
 
-  // Save history when updated
   useEffect(() => {
     localStorage.setItem('wisian_history', JSON.stringify(savedResources));
   }, [savedResources]);
@@ -76,10 +79,9 @@ function App() {
   const filteredTools = TOOLS_CONFIG.filter(t => t.categoryId === activeCategory);
 
   const handleAuth = async () => {
-      if (window.aistudio) {
+      if (typeof window !== 'undefined' && window.aistudio) {
           try {
               await window.aistudio.openSelectKey();
-              // Protocol: Assume success after opening dialog to mitigate race conditions
               setHasAccess(true);
               setApiStatus('online');
               setTimeout(() => scrollToId('demo'), 500);
@@ -88,9 +90,8 @@ function App() {
               setApiStatus('error');
           }
       } else {
-          // If no window.aistudio, we rely on environment process.env.API_KEY
-          const hasKey = !!process.env.API_KEY;
-          if (hasKey) {
+          const envKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+          if (envKey) {
             setHasAccess(true);
             setApiStatus('online');
           } else {
@@ -102,7 +103,10 @@ function App() {
   const handleGenerate = async () => {
     if (isGenerating) return;
     
-    if (!hasAccess && !process.env.API_KEY) {
+    // Safe environment access
+    const envKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+    
+    if (!hasAccess && !envKey) {
       setOutput("### Access Denied\nWisian Corporation Protocol: Please authenticate to access the intelligence engine.");
       return;
     }
@@ -116,15 +120,15 @@ function App() {
     }
 
     try {
-      // Create new instance right before call as per guidelines
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: envKey });
       const systemInstruction = `
         You are Wisian, the proprietary AI engine of Wisian Corporation.
         Your mission is to democratize high-tier corporate intelligence for the South African education sector.
         Guidelines:
         - Output MUST be structured, professional, and authoritative.
         - Use South African English spelling and terminology.
-        - Format as a high-end consultancy deliverable.
+        - Format as a high-end consultancy deliverable (McKinsey/Deloitte style).
+        - Use Markdown for formatting.
       `.trim();
 
       const userPrompt = `
@@ -162,16 +166,13 @@ function App() {
       setSavedResources(prev => [newResource, ...prev].slice(0, 15));
     } catch (error: any) {
       console.error("Generation error:", error);
-      // Reset key selection state if "Requested entity was not found" error occurs as per guidelines
-      if (error?.message?.includes('Requested entity was not found')) {
+      
+      if (error?.message?.includes('Requested entity was not found') && window.aistudio) {
         setHasAccess(false);
         setApiStatus('error');
-        if (window.aistudio) {
-           await window.aistudio.openSelectKey();
-           setHasAccess(true);
-           setApiStatus('online');
-        }
+        await window.aistudio.openSelectKey();
       }
+      
       const msg = error?.message?.includes('API_KEY') 
         ? "### Authentication Failed\nSecurity Protocol: API Key invalid or missing. Please reconnect."
         : "### Network Interruption\nThe Wisian Link is experiencing latency. Retrying connection...";
