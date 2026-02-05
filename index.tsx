@@ -14,12 +14,6 @@ interface SavedResource {
   timestamp: number;
 }
 
-declare global {
-  interface Window {
-    aistudio?: any;
-  }
-}
-
 function App() {
   const [activeCategory, setActiveCategory] = useState(TOOL_CATEGORIES[0].id);
   const [selectedTool, setSelectedTool] = useState<ToolConfig>(TOOLS_CONFIG[0]);
@@ -46,9 +40,9 @@ function App() {
     }
     
     const checkAuth = async () => {
-        if (typeof window !== 'undefined' && window.aistudio) {
+        if (typeof window !== 'undefined' && (window as any).aistudio) {
             try {
-              const hasKey = await window.aistudio.hasSelectedApiKey();
+              const hasKey = await (window as any).aistudio.hasSelectedApiKey();
               setHasAccess(hasKey);
               setApiStatus(hasKey ? 'online' : 'idle');
             } catch (e) {
@@ -79,9 +73,9 @@ function App() {
   const filteredTools = TOOLS_CONFIG.filter(t => t.categoryId === activeCategory);
 
   const handleAuth = async () => {
-      if (typeof window !== 'undefined' && window.aistudio) {
+      if (typeof window !== 'undefined' && (window as any).aistudio) {
           try {
-              await window.aistudio.openSelectKey();
+              await (window as any).aistudio.openSelectKey();
               setHasAccess(true);
               setApiStatus('online');
               setTimeout(() => scrollToId('demo'), 500);
@@ -167,10 +161,10 @@ function App() {
     } catch (error: any) {
       console.error("Generation error:", error);
       
-      if (error?.message?.includes('Requested entity was not found') && window.aistudio) {
+      if (error?.message?.includes('Requested entity was not found') && (window as any).aistudio) {
         setHasAccess(false);
         setApiStatus('error');
-        await window.aistudio.openSelectKey();
+        await (window as any).aistudio.openSelectKey();
       }
       
       const msg = error?.message?.includes('API_KEY') 
